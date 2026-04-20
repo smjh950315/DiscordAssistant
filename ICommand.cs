@@ -1,3 +1,4 @@
+using System.Reflection;
 using Discord;
 using Discord.WebSocket;
 
@@ -18,31 +19,56 @@ public class CommandBase : ICommand
 
     public required string Description { get; set; }
 
-    public required Func<SocketSlashCommand, Task> Handler { get; set; }
+    public required MethodInfo HandlerMethod { get; set; }
 
     public SlashCommandProperties BuildSlashCommand()
     {
-        return new SlashCommandBuilder()
-            .WithName(Name)
-            .WithDescription(Description)
-            .Build();
+        return CommandHelper.BuildSlashCommandFromFunction(HandlerMethod);
     }
 
     public Task ExecuteAsync(SocketSlashCommand command)
     {
-        return Handler(command);
+        var parameters = HandlerMethod.GetParameters();
+        var args = new object[parameters.Length];
+        for (int i = 0; i < parameters.Length; i++)
+        {
+            if (parameters[i].ParameterType == typeof(SocketSlashCommand))
+            {
+                args[i] = command;
+            }
+            else
+            {
+                var option = command.Data.Options.FirstOrDefault(o => o.Name == parameters[i].Name!.ToLower());
+                if (option == null)
+                {
+                    throw new ArgumentException($"Missing required option {parameters[i].Name} for command {Name}.");
+                }
+                if (option.Value == null)
+                {
+                    throw new ArgumentException($"Option {parameters[i].Name} for command {Name} cannot be null.");
+                }
+                if (option.Value.GetType() != parameters[i].ParameterType)
+                {
+                    args[i] = Convert.ChangeType(option.Value, parameters[i].ParameterType);
+                }
+                else
+                {
+                    args[i] = option.Value!;
+                }                
+            }
+        }
+        return (Task)HandlerMethod.Invoke(null, args)!;
     }
 
-    public static ICommand BuildCommand(
-        string name,
-        string description,
-        Func<SocketSlashCommand, Task> executeFunc)
+    public static ICommand BuildCommand(MethodInfo method)
     {
+        var commandName = method.Name.ToLower();
+        var description = $"Executes the {method.Name} function.";
         return new CommandBase
         {
-            Name = name,
+            Name = commandName,
             Description = description,
-            Handler = executeFunc,
+            HandlerMethod = method
         };
     }
 }
