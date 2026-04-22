@@ -1,13 +1,17 @@
+using Dapper;
 using Discord;
 using Discord.WebSocket;
 using DiscordAssistant.Commands;
+using DiscordAssistant.Workers;
 
 namespace DiscordAssistant;
 
 internal sealed class Program
 {
-    private readonly DiscordSocketClient client;
+    private readonly DiscordSocketClient _client;
     private readonly CommandRegistry commandRegistry;
+    private BriLeithNotifier? briLeithNotifier;
+    private string? _connectionString;
 
     private Program()
     {
@@ -16,12 +20,32 @@ internal sealed class Program
             GatewayIntents = GatewayIntents.Guilds,
         };
 
-        client = new DiscordSocketClient(config);
-        commandRegistry = new CommandRegistry(BasicCommands.All);
+        _client = new DiscordSocketClient(config);
+        List<ICommand> commands = new();
+        var basicCommands = BasicCommands.All;
+        commands.AddRange(basicCommands);
+        var brileithCommands = BrileithCommands.All;
+        commands.AddRange(brileithCommands);
+        Console.WriteLine("Register commands: " + string.Join(',', commands.Select(c => c.Name)));
 
-        client.Log += LogAsync;
-        client.Ready += ReadyAsync;
-        client.SlashCommandExecuted += SlashCommandExecutedAsync;
+        commandRegistry = new CommandRegistry(commands);
+        _connectionString = Environment.GetEnvironmentVariable("CONNECTION_STRING");
+        if (!string.IsNullOrEmpty(_connectionString))
+        {
+            using (var conn = new Npgsql.NpgsqlConnection(_connectionString))
+            {
+                conn.Execute(Utilities.GetDatabaseInitializeSql());
+            }
+        }
+        BasicCommands._connection = new Npgsql.NpgsqlConnection(_connectionString);
+        var g27ChannelIdText = Environment.GetEnvironmentVariable("DISCORD_CHANNEL_ID");
+        if (ulong.TryParse(g27ChannelIdText, out var g27ChannelId))
+        {
+            briLeithNotifier = new BriLeithNotifier(_client, g27ChannelId, 21, 00, 5);
+        }
+        _client.Log += LogAsync;
+        _client.Ready += ReadyAsync;
+        _client.SlashCommandExecuted += SlashCommandExecutedAsync;
     }
 
     private static async Task Main()
@@ -33,15 +57,18 @@ internal sealed class Program
         {
             throw new InvalidOperationException("Set DISCORD_TOKEN in your environment or .env file before running the bot.");
         }
-
         var program = new Program();
         await program.RunAsync(token);
     }
 
     private async Task RunAsync(string token)
     {
-        await client.LoginAsync(TokenType.Bot, token);
-        await client.StartAsync();
+        await _client.LoginAsync(TokenType.Bot, token);
+        await _client.StartAsync();
+        var w = new BrileithRecruitWorker(_client, () => new Npgsql.NpgsqlConnection(_connectionString), 1);
+        w.Start();
+        //await (briLeithNotifier?.SetSpecificMessage(1495771204026634471) ?? Task.CompletedTask);
+        briLeithNotifier?.Start();
         await Task.Delay(Timeout.Infinite);
     }
 
@@ -53,7 +80,7 @@ internal sealed class Program
 
     private async Task ReadyAsync()
     {
-        Console.WriteLine($"Logged in as {client.CurrentUser.Username}#{client.CurrentUser.Discriminator}");
+        Console.WriteLine($"Logged in as {_client.CurrentUser.Username}#{_client.CurrentUser.Discriminator}");
         await RegisterSlashCommandsAsync();
     }
 
@@ -69,11 +96,11 @@ internal sealed class Program
         var guildIdText = Environment.GetEnvironmentVariable("DISCORD_GUILD_ID");
         if (ulong.TryParse(guildIdText, out var guildId))
         {
-            var guild = client.GetGuild(guildId);
+            var guild = _client.GetGuild(guildId);
             if (guild is null)
             {
                 Console.WriteLine($"Could not find guild {guildId}; syncing commands globally instead.");
-                await client.BulkOverwriteGlobalApplicationCommandsAsync(commands);
+                await _client.BulkOverwriteGlobalApplicationCommandsAsync(commands);
                 return;
             }
 
@@ -82,7 +109,7 @@ internal sealed class Program
             return;
         }
 
-        await client.BulkOverwriteGlobalApplicationCommandsAsync(commands);
+        await _client.BulkOverwriteGlobalApplicationCommandsAsync(commands);
         Console.WriteLine("Synced global slash commands.");
     }
 }
