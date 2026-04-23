@@ -1,3 +1,4 @@
+using System.Data;
 using Dapper;
 using Discord;
 using Discord.WebSocket;
@@ -12,6 +13,7 @@ internal sealed class Program
     private readonly CommandRegistry commandRegistry;
     private BriLeithNotifier? briLeithNotifier;
     private string? _connectionString;
+    private Func<IDbConnection>? _connectionBuilder;
 
     private Program()
     {
@@ -27,17 +29,10 @@ internal sealed class Program
         var brileithCommands = BrileithCommands.All;
         commands.AddRange(brileithCommands);
         Console.WriteLine("Register commands: " + string.Join(',', commands.Select(c => c.Name)));
-
+        
         commandRegistry = new CommandRegistry(commands);
-        _connectionString = Environment.GetEnvironmentVariable("CONNECTION_STRING");
-        if (!string.IsNullOrEmpty(_connectionString))
-        {
-            using (var conn = new Npgsql.NpgsqlConnection(_connectionString))
-            {
-                conn.Execute(Utilities.GetDatabaseInitializeSql());
-            }
-        }
-        BasicCommands._connection = new Npgsql.NpgsqlConnection(_connectionString);
+        Global.SetConnectionString(Environment.GetEnvironmentVariable("CONNECTION_STRING"));
+
         var g27ChannelIdText = Environment.GetEnvironmentVariable("DISCORD_CHANNEL_ID");
         if (ulong.TryParse(g27ChannelIdText, out var g27ChannelId))
         {
@@ -65,9 +60,8 @@ internal sealed class Program
     {
         await _client.LoginAsync(TokenType.Bot, token);
         await _client.StartAsync();
-        var w = new BrileithRecruitWorker(_client, () => new Npgsql.NpgsqlConnection(_connectionString), 1);
+        var w = new BrileithRecruitWorker(_client, 1);
         w.Start();
-        //await (briLeithNotifier?.SetSpecificMessage(1495771204026634471) ?? Task.CompletedTask);
         briLeithNotifier?.Start();
         await Task.Delay(Timeout.Infinite);
     }

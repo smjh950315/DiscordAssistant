@@ -1,3 +1,7 @@
+using System.Reflection;
+using Discord;
+using Discord.WebSocket;
+
 namespace DiscordAssistant;
 
 public class Utilities
@@ -5,6 +9,29 @@ public class Utilities
     public static string GetDatabaseInitializeSql()
     {
         return """
+            CREATE TABLE IF NOT EXISTS schedule (
+                id BIGSERIAL PRIMARY KEY,
+                cron_expression VARCHAR(32) NOT NULL,
+                message_template VARCHAR(512) NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS schedule_subscriber (
+                id BIGSERIAL PRIMARY KEY,
+                schedule_id BIGINT NOT NULL REFERENCES schedule(id) ON DELETE CASCADE,
+                subscriber_id BIGINT NOT NULL,
+                subscriber_channel_id BIGINT NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS data_storage (
+                id BIGSERIAL PRIMARY KEY,
+                name VARCHAR(128) NOT NULL,
+                data VARCHAR(1024) NOT NULL,
+                guild_id BIGINT NULL,
+                channel_id BIGINT NULL,
+                user_id BIGINT NULL,
+                scope_expression VARCHAR(64) NULL
+            );
+
             CREATE TABLE IF NOT EXISTS brileith_recruit (
                 id BIGSERIAL PRIMARY KEY,
                 channel_id BIGINT NOT NULL,
@@ -15,9 +42,15 @@ public class Utilities
             CREATE TABLE IF NOT EXISTS brileith_recruit_target (
                 id BIGSERIAL PRIMARY KEY,
                 recruit_id BIGINT NOT NULL REFERENCES brileith_recruit(id) ON DELETE CASCADE,
-                target_id TEXT NOT NULL,
+                target_id BIGINT NOT NULL,
                 recruit_time_regex VARCHAR(32) NOT NULL
             );
+
+            CREATE INDEX IF NOT EXISTS idx_schedule_subscriber_schedule_id
+                ON schedule_subscriber(schedule_id);
+
+            CREATE INDEX IF NOT EXISTS idx_data_storage_name_scope
+                ON data_storage(name, guild_id, channel_id, user_id, scope_expression);
 
             CREATE INDEX IF NOT EXISTS idx_brileith_recruit_target_recruit_id
                 ON brileith_recruit_target(recruit_id);

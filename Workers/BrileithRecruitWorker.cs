@@ -7,10 +7,9 @@ namespace DiscordAssistant.Workers;
 
 public class BrileithRecruitWorker : WorkerBase, IWorker
 {
-    public BrileithRecruitWorker(DiscordSocketClient client, Func<IDbConnection> factory, ulong scheduleId) : base(client, factory, scheduleId)
+    public BrileithRecruitWorker(DiscordSocketClient client, ulong scheduleId) : base(client, scheduleId)
     {
         _client = client;
-        _dbFactory = factory;
         _scheduleId = scheduleId;
     }
 
@@ -33,13 +32,13 @@ public class BrileithRecruitWorker : WorkerBase, IWorker
     [MemberNotNullWhen(true, nameof(_recruitData))]
     bool UpdateRecruitData()
     {
-        using (var conn = _dbFactory())
+        using (var conn = Global.GetConnection())
         {
             _recruitData = conn.QueryFirstOrDefault<RecruitData>("select * from brileith_recruit where id = @_scheduleId", new { _scheduleId = (long)_scheduleId });
         }
         return _recruitData != null;
     }
-    public void Start()
+    public override void Start()
     {
         CancellationTokenSource cts = new();
         _cancellationTokenSource = cts;
@@ -57,7 +56,7 @@ public class BrileithRecruitWorker : WorkerBase, IWorker
                 if (CronMatches(_recruitData.recruit_time_regex, now))
                 {
                     IEnumerable<long> targetIds = [];
-                    using (var conn = _dbFactory())
+                    using (var conn = Global.GetConnection())
                     {
                         var notifyTargets = conn.Query<RecruitTargetData>("select target_id, recruit_time_regex from brileith_recruit_target where recruit_id = @_recruitId", new
                         {
@@ -77,7 +76,7 @@ public class BrileithRecruitWorker : WorkerBase, IWorker
         });
     }
 
-    public async Task StopAsync()
+    public override async Task StopAsync()
     {
         if (_cancellationTokenSource != null)
         {

@@ -19,19 +19,20 @@ public static class BrileithCommands
                 .Select(CommandBase.BuildCommand);
         }
     }
-    static public IDbConnection? _connection { get; set; }
+
     public static async Task brileith_edit(SocketSlashCommand command, string weekDay, string timeOfDay, string? recruitMessage)
     {
         var userId = command.User.Id;
         var channelId = command.ChannelId;
-        if (_connection == null || channelId == null)
+        var connection = Global.GetConnection();
+        if (connection == null || channelId == null)
         {
             await command.ResponseDbConnectionFailureAsync();
             return;
         }
         var _userId = (long)userId;
         var _channelId = (long)channelId;
-        var party = _connection.QueryFirstOrDefault<BriLeithRecruit>($@"
+        var party = connection.QueryFirstOrDefault<BriLeithRecruit>($@"
         select * 
         from brileith_recruit br
         where br.channel_id = @_channelId", new
@@ -69,7 +70,7 @@ public static class BrileithCommands
 
         if (useInsert)
         {
-            _connection.Execute($@"
+            connection.Execute($@"
             insert into brileith_recruit(channel_id, recruit_message, recruit_time_regex)
             values(@_cid, @_message, @_regex)", new
             {
@@ -81,7 +82,7 @@ public static class BrileithCommands
         }
         else
         {
-            _connection.Execute($@"
+            connection.Execute($@"
             update brileith_recruit 
             set channel_id = @_cid, recruit_message = @_message, recruit_time_regex = @_regex", new
             {
@@ -97,14 +98,15 @@ public static class BrileithCommands
     {
         var userId = command.User.Id;
         var channelId = command.ChannelId;
-        if (_connection == null || !channelId.HasValue)
+        var connection = Global.GetConnection();
+        if (connection == null || !channelId.HasValue)
         {
             await command.ResponseDbConnectionFailureAsync();
             return;
         }
         var _userId = (long)userId;
         var _channelId = (long)channelId;
-        var selfRecord = _connection.QueryFirstOrDefault<long>($@"
+        var selfRecord = connection.QueryFirstOrDefault<long>($@"
         select brt.id 
         from brileith_recruit_target brt
         join brileith_recruit br on brt.recruit_id = br.id
@@ -115,7 +117,7 @@ public static class BrileithCommands
         });
         if (selfRecord == 0)
         {
-            var partyId = _connection.QueryFirstOrDefault<long>($@"
+            var partyId = connection.QueryFirstOrDefault<long>($@"
             select br.id
             from brileith_recruit br
             where br.channel_id = @_channelId", new
@@ -127,7 +129,7 @@ public static class BrileithCommands
                 await command.RespondAsync("沒有出團設定");
                 return;
             }
-            var regex = _connection.QueryFirstOrDefault<string>($@"
+            var regex = connection.QueryFirstOrDefault<string>($@"
             select br.recruit_time_regex
             from brileith_recruit br
             where br.id = @_id", new
@@ -141,7 +143,7 @@ public static class BrileithCommands
             }
             if (selfRecord == 0)
             {
-                _connection.Execute($@"
+                connection.Execute($@"
                 insert into brileith_recruit_target(recruit_id, target_id, recruit_time_regex)
                 values(@_rid, @_tid, @_regex)", new
                 {
@@ -152,7 +154,7 @@ public static class BrileithCommands
             }
             else
             {
-                _connection.Execute($@"
+                connection.Execute($@"
                 update brileith_recruit_target 
                 set recruit_id = @_rid, target_id = @_tid, recruit_time_regex = @_regex
                 where id = @_id", new
@@ -173,14 +175,15 @@ public static class BrileithCommands
     {
         var userId = command.User.Id;
         var channelId = command.ChannelId;
-        if (_connection == null || !channelId.HasValue)
+        var connection = Global.GetConnection();
+        if (connection == null || !channelId.HasValue)
         {
             await command.ResponseDbConnectionFailureAsync();
             return;
         }
         var _userId = (long)userId;
         var _channelId = (long)channelId;
-        var partyId = _connection.QueryFirstOrDefault<long>($@"
+        var partyId = connection.QueryFirstOrDefault<long>($@"
             select br.id
             from brileith_recruit br
             where br.channel_id = @_channelId", new
@@ -192,7 +195,7 @@ public static class BrileithCommands
             await command.RespondAsync("沒有出團設定");
             return;
         }
-        var regex = _connection.QueryFirstOrDefault<string>($@"
+        var regex = connection.QueryFirstOrDefault<string>($@"
             select br.recruit_time_regex
             from brileith_recruit br
             where br.id = @_id", new
@@ -212,7 +215,7 @@ public static class BrileithCommands
             return;
         }
 
-        var selfRecord = _connection.QueryFirstOrDefault<long>($@"
+        var selfRecord = connection.QueryFirstOrDefault<long>($@"
         select brt.id 
         from brileith_recruit_target brt
         join brileith_recruit br on brt.recruit_id = br.id
@@ -223,7 +226,7 @@ public static class BrileithCommands
         });
         if (selfRecord == 0)
         {
-            _connection.Execute($@"
+            connection.Execute($@"
                 insert into brileith_recruit_target(recruit_id, target_id, recruit_time_regex)
                 values(@_rid, @_tid, @_regex)", new
             {
@@ -234,7 +237,7 @@ public static class BrileithCommands
         }
         else
         {
-            _connection.Execute($@"
+            connection.Execute($@"
                 update brileith_recruit_target 
                 set recruit_id = @_rid, target_id = @_tid, recruit_time_regex = @_regex
                 where id = @_id", new
@@ -252,14 +255,15 @@ public static class BrileithCommands
     {
         var userId = command.User.Id;
         var channelId = command.ChannelId;
-        if (_connection == null || !channelId.HasValue)
+        var connection = Global.GetConnection();
+        if (connection == null || !channelId.HasValue)
         {
             await command.ResponseDbConnectionFailureAsync();
             return;
         }
         var _userId = (long)userId;
         var _channelId = (long)channelId;
-        var partyId = _connection.QueryFirstOrDefault<long>($@"
+        var partyId = connection.QueryFirstOrDefault<long>($@"
         select id 
         from brileith_recruit br
         where br.channel_id = @_channelId", new
@@ -271,7 +275,7 @@ public static class BrileithCommands
             await command.ResponseFailure("沒有出團設定");
             return;
         }
-        _connection.Execute($@"
+        connection.Execute($@"
         delete from brileith_recruit_target where target_id = @_tid and recruit_id = @_rid", new
         {
             _tid = _userId,

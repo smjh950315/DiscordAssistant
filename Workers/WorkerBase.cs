@@ -1,5 +1,8 @@
 using System.Data;
+using Dapper;
+using Discord;
 using Discord.WebSocket;
+using DiscordAssistant.DBModels;
 
 namespace DiscordAssistant.Workers;
 
@@ -7,53 +10,7 @@ public class WorkerBase
 {
     protected CancellationTokenSource? _cancellationTokenSource { get; set; }
     protected DiscordSocketClient _client { get; set; }
-    protected Func<IDbConnection> _dbFactory { get; set; }
     protected ulong _scheduleId { get; set; }
-
-    /// <summary>
-    /// get string from <paramref name="messageFormater"/> which replace all {TARGETS} to <paramref name="notifyingId"/>
-    /// </summary>
-    /// <param name="messageFormater"></param>
-    /// <param name="notifyingId"></param>
-    /// <returns></returns>
-    public static string CreateMessageText(string messageFormater, IEnumerable<long> notifyingId)
-    {
-        var notifyText = notifyingId.Distinct().Select(i => $"<@{i}>");
-        return messageFormater.Replace("{TARGETS}", string.Join(',', notifyText), StringComparison.Ordinal);
-    }
-
-    public static string GenerateCRONFormat(bool isBefore, bool isEqual, bool isAfter, string dayOfWeek, int hourOfDay, int minuteOfHour)
-    {
-        if (!isBefore && !isEqual && !isAfter)
-        {
-            throw new ArgumentException("At least one time relation must be selected.", nameof(isEqual));
-        }
-
-        var parsedDayOfWeek = ParseDayOfWeek(dayOfWeek);
-        var baseDate = new DateTime(2024, 1, 7, hourOfDay, minuteOfHour, 0, DateTimeKind.Unspecified)
-            .AddDays((int)parsedDayOfWeek);
-
-        var offsets = new List<int>();
-        if (isBefore)
-        {
-            offsets.Add(-1);
-        }
-        if (isEqual)
-        {
-            offsets.Add(0);
-        }
-        if (isAfter)
-        {
-            offsets.Add(1);
-        }
-
-        return string.Join(
-            "|",
-            offsets
-                .Select(offset => baseDate.AddMinutes(offset))
-                .Select(value => $"{value.Minute} {value.Hour} * * {(int)value.DayOfWeek}")
-                .Distinct(StringComparer.Ordinal));
-    }
 
     protected static bool CronMatches(string cronExpression, DateTimeOffset timestamp)
     {
@@ -185,10 +142,122 @@ public class WorkerBase
         };
     }
 
-    public WorkerBase(DiscordSocketClient client, Func<IDbConnection> factory, ulong schedule_id)
+    /// <summary>
+    /// get string from <paramref name="messageFormater"/> which replace all {TARGETS} to <paramref name="notifyingId"/>
+    /// </summary>
+    /// <param name="messageFormater"></param>
+    /// <param name="notifyingId"></param>
+    /// <returns></returns>
+    public static string CreateMessageText(string messageFormater, IEnumerable<long> notifyingId)
+    {
+        var notifyText = notifyingId.Distinct().Select(i => $"<@{i}>");
+        return messageFormater.Replace("{TARGETS}", string.Join(',', notifyText), StringComparison.Ordinal);
+    }
+
+    public static string GenerateCRONFormat(bool isBefore, bool isEqual, bool isAfter, string dayOfWeek, int hourOfDay, int minuteOfHour)
+    {
+        if (!isBefore && !isEqual && !isAfter)
+        {
+            throw new ArgumentException("At least one time relation must be selected.", nameof(isEqual));
+        }
+
+        var parsedDayOfWeek = ParseDayOfWeek(dayOfWeek);
+        var baseDate = new DateTime(2024, 1, 7, hourOfDay, minuteOfHour, 0, DateTimeKind.Unspecified)
+            .AddDays((int)parsedDayOfWeek);
+
+        var offsets = new List<int>();
+        if (isBefore)
+        {
+            offsets.Add(-1);
+        }
+        if (isEqual)
+        {
+            offsets.Add(0);
+        }
+        if (isAfter)
+        {
+            offsets.Add(1);
+        }
+
+        return string.Join(
+            "|",
+            offsets
+                .Select(offset => baseDate.AddMinutes(offset))
+                .Select(value => $"{value.Minute} {value.Hour} * * {(int)value.DayOfWeek}")
+                .Distinct(StringComparer.Ordinal));
+    }
+
+    public WorkerBase(DiscordSocketClient client, ulong schedule_id)
     {
         _client = client;
-        _dbFactory = factory;
         _scheduleId = schedule_id;
+    }
+
+    public virtual void Start()
+    {
+        CancellationTokenSource cts = new();
+        _cancellationTokenSource = cts;
+        var cancelationToken = cts.Token;
+        var task = Task.Run(async () =>
+        {
+            await Task.Delay(TimeSpan.FromSeconds(10));
+            while (!cancelationToken.IsCancellationRequested)
+            {
+                string? cronRegex;
+                string? messageTemplate;
+                using (var conn = Global.GetConnection())
+                {
+                    Schedule? sc = conn?.QueryFirstOrDefault<Schedule>("select * from schedule where id = @_id", new
+                    {
+                        _id = (long)_scheduleId
+                    });
+                    cronRegex = sc?.cron_expression;
+                    messageTemplate = sc?.message_template;
+                }
+
+                if (string.IsNullOrEmpty(cronRegex) || string.IsNullOrEmpty(messageTemplate))
+                    break;
+
+                var now = DateTimeOffset.Now;
+                if (CronMatches(cronRegex, now))
+                {
+                    using (var conn = Global.GetConnection())
+                    {
+                        var subscribers = conn?.Query<ScheduleSubscriber>("select * from schedule_subscriber where schedule_id = @_id", new
+                        {
+                            _id = (long)_scheduleId
+                        }) ?? [];
+                        var channelGroups = subscribers.GroupBy(s => s.subscriber_channel_id).Select(g => new
+                        {
+                            channelId = g.Key,
+                            userId = g.Select(x => x.subscriber_id)
+                        });
+                        foreach (var channelGroup in channelGroups)
+                        {
+                            var channel = await _client.GetChannelAsync((ulong)channelGroup.channelId);
+                            if (channel is IMessageChannel messageChannel)
+                            {
+                                string messageText = messageTemplate;
+                                if (messageTemplate.IndexOf("{USER_ID}") != -1)
+                                {
+                                    var userIdString = string.Join(',', channelGroup.userId.Select(i => (ulong)i).Select(i => $"<@{i}>"));
+                                    messageText = messageTemplate.Replace("{USER_ID}", userIdString);
+                                }
+                                await messageChannel.SendMessageAsync(messageText);
+                            }
+                        }
+                    }
+                }
+                await Task.Delay(TimeSpan.FromMinutes(1));
+            }
+        });
+    }
+
+    public virtual async Task StopAsync()
+    {
+        if (_cancellationTokenSource != null)
+        {
+            await _cancellationTokenSource.CancelAsync();
+        }
     }
 }

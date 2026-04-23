@@ -1,6 +1,6 @@
 # DiscordAssistant
 
-A Discord bot built with .NET 10 and Discord.Net. The repository currently includes a reflection-based slash-command layer, sample commands, PostgreSQL-backed BriLeith recruit models, and a polling worker scaffold.
+A Discord bot built with .NET 10 and Discord.Net. The repository currently includes a reflection-based slash-command layer, sample commands, PostgreSQL-backed data/schedule models, and polling worker scaffolds.
 
 ## Setup
 
@@ -8,7 +8,7 @@ A Discord bot built with .NET 10 and Discord.Net. The repository currently inclu
 2. Copy `.env.example` to `.env`.
 3. Put your bot token in `.env` as `DISCORD_TOKEN`.
 4. Optionally set `DISCORD_GUILD_ID` for fast guild-scoped command syncing while developing.
-5. Optionally set `CONNECTION_STRING` to a PostgreSQL connection string if you want to use the recruit tables and worker layer.
+5. Optionally set `CONNECTION_STRING` to a PostgreSQL connection string if you want to use the database-backed commands and worker layer.
 6. Restore dependencies:
 
 ```powershell
@@ -25,14 +25,18 @@ dotnet run
 
 - `/ping` replies with `Pong!`
 - `/roll sides:<integer>` rolls a die with the provided number of sides
+- `/get name:<string>` reads a value from `data_storage`
+- `/set name:<string> data:<string> isprivate:<integer> scope:<string>` writes a value to `data_storage`
+- `/brileith_*` commands manage BriLeith recruit setup and subscriptions
 
 ## Repository Shape
 
 - `Program.cs` is the current entrypoint. It loads `.env`, starts the Discord client, and syncs slash commands.
 - `ICommand.cs`, `CommandHelper.cs`, and `CommandRegistry.cs` provide the current reflection-based slash-command abstraction.
 - `Commands/BasicCommands.cs` is the current command registration point used by the bot.
-- `DBModels/BriLeithRecruit.cs` and `DBModels/BriLeithRecruitTarget.cs` define the current database tables.
-- `Workers/BaseWorker.cs` contains the shared polling worker and cron matching logic.
+- `Commands/BrileithCommands.cs` contains the BriLeith-specific slash commands.
+- `DBModels/*.cs` defines the current PostgreSQL table shape used by Dapper.
+- `Workers/WorkerBase.cs` contains the shared schedule polling worker and cron matching logic.
 - `Workers/BrileithRecruitWorker.cs` loads recruit rows, filters matching targets, and posts the formatted message to Discord.
 - `Utilities.cs` exposes the SQL bootstrap script for the current database tables.
 
@@ -42,8 +46,34 @@ The database layer is written for PostgreSQL because the project references `Npg
 
 The bootstrap SQL currently creates:
 
+- `schedule`
+- `schedule_subscriber`
+- `data_storage`
 - `brileith_recruit`
 - `brileith_recruit_target`
+
+`schedule` columns:
+
+- `id BIGSERIAL PRIMARY KEY`
+- `cron_expression VARCHAR(32) NOT NULL`
+- `message_template VARCHAR(512) NOT NULL`
+
+`schedule_subscriber` columns:
+
+- `id BIGSERIAL PRIMARY KEY`
+- `schedule_id BIGINT NOT NULL REFERENCES schedule(id) ON DELETE CASCADE`
+- `subscriber_id BIGINT NOT NULL`
+- `subscriber_channel_id BIGINT NOT NULL`
+
+`data_storage` columns:
+
+- `id BIGSERIAL PRIMARY KEY`
+- `name VARCHAR(128) NOT NULL`
+- `data VARCHAR(1024) NOT NULL`
+- `guild_id BIGINT NULL`
+- `channel_id BIGINT NULL`
+- `user_id BIGINT NULL`
+- `scope_expression VARCHAR(64) NULL`
 
 `brileith_recruit` columns:
 
@@ -56,10 +86,10 @@ The bootstrap SQL currently creates:
 
 - `id BIGSERIAL PRIMARY KEY`
 - `recruit_id BIGINT NOT NULL REFERENCES brileith_recruit(id) ON DELETE CASCADE`
-- `target_id TEXT NOT NULL`
+- `target_id BIGINT NOT NULL`
 - `recruit_time_regex VARCHAR(32) NOT NULL`
 
-`brileith_recruit.recruit_time_regex` and `brileith_recruit_target.recruit_time_regex` both expect a five-part cron expression:
+`schedule.cron_expression`, `brileith_recruit.recruit_time_regex`, and `brileith_recruit_target.recruit_time_regex` expect a five-part cron expression:
 
 ```text
 minute hour day-of-month month day-of-week
@@ -79,7 +109,9 @@ The current worker supports:
 - step syntax like `*/5` and `1-10/2`
 - weekday aliases like `MON` through `SUN`
 
-The recruit worker reads one `brileith_recruit` row by id, loads all matching `brileith_recruit_target` rows, filters them by cron match, joins matching `target_id` values with commas, and injects that result into the outgoing message formatter.
+`WorkerBase` reads one `schedule` row by id, loads `schedule_subscriber` rows for it, groups subscribers by `subscriber_channel_id`, and replaces `{USER_ID}` in the message template with Discord mentions.
+
+`BrileithRecruitWorker` reads one `brileith_recruit` row by id, loads all matching `brileith_recruit_target` rows, filters them by cron match, and injects matching `target_id` values into the outgoing message formatter.
 
 Startup wiring in `Program.cs` is still minimal and does not yet automatically initialize the database or start workers beyond the current manual setup in code.
 
