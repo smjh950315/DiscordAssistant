@@ -21,6 +21,13 @@ public static class Global
     {
         if (string.IsNullOrEmpty(_connectionString))
             return null;
-        return new Npgsql.NpgsqlConnection(_connectionString);
+        try
+        {
+            return new Npgsql.NpgsqlConnection(_connectionString);
+        }
+        catch
+        {
+            return null;
+        }
     }
 }

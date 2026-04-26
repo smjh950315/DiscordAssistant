@@ -93,10 +93,11 @@ public class CommandBase : ICommand
         for (int i = 1; i < parameters.Length; i++)
         {
             var param = parameters[i];
+            var paramAttribute = param.GetCustomAttribute<CommandParameterAttribute>();
             var optionBuilder = new SlashCommandOptionBuilder()
-                .WithName(param.Name!.ToLower())
-                .WithDescription($"The {param.Name} parameter.")
-                .WithRequired(param.GetCustomAttribute<OptionalParameterAttribute>() != null);
+                .WithName(paramAttribute?.Name ?? param.Name!.ToLower())
+                .WithDescription(paramAttribute?.Description ?? $"The {param.Name} parameter.")
+                .WithRequired(paramAttribute?.IsRequire ?? Nullable.GetUnderlyingType(param.ParameterType) == null);
 
             if (param.ParameterType == typeof(int))
             {

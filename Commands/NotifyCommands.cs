@@ -6,10 +6,10 @@ namespace DiscordAssistant.Commands;
 
 public static class NotifyCommands
 {
-    public static async Task set_notifier(SocketSlashCommand command, 
+    public static async Task set_notifier(SocketSlashCommand command,
         string name, int hour, int minute, string message,
-        [OptionalParameter] string weekDays,
-        [OptionalParameter] string? workType)
+        [CommandParameter(false, "0到6 分別代表週日到周六，逗號(',')分隔或是留空表示全部")] string? weekDays,
+        [CommandParameter(false)] string? workType)
     {
         if (string.IsNullOrEmpty(name) || string.IsNullOrWhiteSpace(name))
         {
@@ -37,7 +37,14 @@ public static class NotifyCommands
                     _name = name,
                     _channelId
                 });
-                var _cronExpr = Utilities.GenerateCRONFormat(false, true, false, weekDays, hour, minute);
+                string? _cronExpr;
+                try { _cronExpr = Utilities.GenerateCRONFormat(false, true, false, weekDays ?? "0123456", hour, minute); }
+                catch (Exception ex)
+                {
+                    Console.WriteLine(ex.ToString());
+                    await command.ResponseFailure("時間輸入格式錯誤");
+                    return;
+                }
                 if (scheduleId == 0)
                 {
                     conn.Execute("""insert into schedule(name, channel_id, cron_expression, message_template, worker_type) values(@_name, @_channelId, @_cronExpr, @_msgExpr, @_workType)""", new
