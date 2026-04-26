@@ -12,6 +12,4 @@ public class ScheduleSubscriber
     public long schedule_id { get; set; }
 
     public long subscriber_id { get; set; }
-
-    public long subscriber_channel_id { get; set; }
 }

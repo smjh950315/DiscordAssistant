@@ -1,6 +1,7 @@
 using System.Reflection;
 using Discord;
 using Discord.WebSocket;
+using DiscordAssistant.Attributes;
 
 namespace DiscordAssistant;
 
@@ -54,7 +55,7 @@ public class CommandBase : ICommand
                 else
                 {
                     args[i] = option.Value!;
-                }                
+                }
             }
         }
         return (Task)HandlerMethod.Invoke(null, args)!;
@@ -76,6 +77,13 @@ public class CommandBase : ICommand
     {
         var commandName = method.Name.ToLower();
         var description = $"Executes the {method.Name} function.";
+
+        var descAttribe = method.GetCustomAttribute<CommandDescriptionAttribute>();
+        if (descAttribe != null)
+        {
+            description = descAttribe.DescriptionText;
+        }
+
         var parameters = method.GetParameters();
         if (parameters.Length < 1 || parameters[0].ParameterType != typeof(SocketSlashCommand))
         {
@@ -88,7 +96,7 @@ public class CommandBase : ICommand
             var optionBuilder = new SlashCommandOptionBuilder()
                 .WithName(param.Name!.ToLower())
                 .WithDescription($"The {param.Name} parameter.")
-                .WithRequired(true);
+                .WithRequired(param.GetCustomAttribute<OptionalParameterAttribute>() != null);
 
             if (param.ParameterType == typeof(int))
             {
@@ -97,6 +105,10 @@ public class CommandBase : ICommand
             else if (param.ParameterType == typeof(string))
             {
                 optionBuilder.WithType(ApplicationCommandOptionType.String);
+            }
+            else if (param.ParameterType == typeof(bool))
+            {
+                optionBuilder.WithType(ApplicationCommandOptionType.Boolean);
             }
             else
             {

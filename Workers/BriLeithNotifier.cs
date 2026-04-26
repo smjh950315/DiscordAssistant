@@ -63,7 +63,9 @@ class BriLeithNotifier
                         await _message.DeleteAsync();
                         _message = null;
                     }
-                    else if (now > targetTime)
+                    else if (now > targetTime 
+                    //&& now.Hour == 21 && now.Minute == 30
+                    )
                     {
                         _message = await _client.FreshMessageAsync(_message) as IUserMessage;
                         if (_message != null)
@@ -73,7 +75,7 @@ class BriLeithNotifier
                             if (users.Count() >= _minParticipants)
                             {
                                 await _channel.TagUsers(users.Select(u => u.Id), mentions => $"[測試] 當前報名人數為 {users.Count()} 已達出團標準! {mentions} 請準備上車!");
-                                await _message.DeleteAsync();
+                                //await _message.DeleteAsync();
                                 _message = null;
                             }
                         }

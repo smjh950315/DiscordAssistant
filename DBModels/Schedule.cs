@@ -10,8 +10,16 @@ public class Schedule
     public long id { get; set; }
 
     [MaxLength(32)]
+    public string name { get; set; }
+
+    public long channel_id { get; set; }
+
+    [MaxLength(32)]
     public string cron_expression { get; set; }
 
     [MaxLength(512)]
     public string message_template { get; set; }
+
+    [MaxLength(32)]
+    public string? worker_type { get; set; }
 }

@@ -1,86 +1,48 @@
 using System.Data;
-using System.Diagnostics.CodeAnalysis;
-using Dapper;
+using Discord;
 using Discord.WebSocket;
 
 namespace DiscordAssistant.Workers;
 
-public class BrileithRecruitWorker : WorkerBase, IWorker
+public class BrileithRecruitWorker : ScheduleWorker, IWorker
 {
-    public BrileithRecruitWorker(DiscordSocketClient client, ulong scheduleId) : base(client, scheduleId)
+    int _minParticipant;
+    public BrileithRecruitWorker(DiscordSocketClient client, long scheduleId, int minParticipant) : base(client, scheduleId)
     {
         _client = client;
-        _scheduleId = scheduleId;
+        _minParticipant = minParticipant;
     }
 
-    class RecruitData
+    public override async Task MessageEventListener(IUserMessage message)
     {
-        public long id { get; set; }
-        public long channel_id { get; set; }
-        public string recruit_message { get; set; }
-        public string recruit_time_regex { get; set; }
-    }
-    class RecruitTargetData
-    {
-        public long target_id { get; set; }
-
-        public string recruit_time_regex { get; set; }
-    }
-
-    RecruitData? _recruitData;
-
-    [MemberNotNullWhen(true, nameof(_recruitData))]
-    bool UpdateRecruitData()
-    {
-        using (var conn = Global.GetConnection())
+        if (_cancellationTokenSource == null)
         {
-            _recruitData = conn.QueryFirstOrDefault<RecruitData>("select * from brileith_recruit where id = @_scheduleId", new { _scheduleId = (long)_scheduleId });
+            await base.MessageEventListener(message);
+            return;
         }
-        return _recruitData != null;
-    }
-    public override void Start()
-    {
-        CancellationTokenSource cts = new();
-        _cancellationTokenSource = cts;
-        var cancelationToken = cts.Token;
-        var task = Task.Run(async () =>
+        while (!_cancellationTokenSource.IsCancellationRequested)
         {
-            await Task.Delay(TimeSpan.FromSeconds(10));
-            while (!cancelationToken.IsCancellationRequested)
+            if (await _client.FreshMessageAsync(message) is IUserMessage userMessage)
             {
-                if (!UpdateRecruitData())
+                var channel = userMessage.Channel;
+                if (channel == null)
                     break;
-
-                var now = DateTimeOffset.Now;
-
-                if (CronMatches(_recruitData.recruit_time_regex, now))
+                var ru = await userMessage.GetReactionUsers();
+                if (ru.Count() >= _minParticipant)
                 {
-                    IEnumerable<long> targetIds = [];
-                    using (var conn = Global.GetConnection())
-                    {
-                        var notifyTargets = conn.Query<RecruitTargetData>("select target_id, recruit_time_regex from brileith_recruit_target where recruit_id = @_recruitId", new
-                        {
-                            _recruitId = _recruitData.id
-                        });
-                        notifyTargets = notifyTargets.Where(n => CronMatches(n.recruit_time_regex, now));
-                        if (notifyTargets.Any())
-                        {
-                            targetIds = notifyTargets.Select(t => t.target_id);
-                        }
-                    }
-                    await _client.SendToChannelAsync((ulong)_recruitData.channel_id, CreateMessageText(_recruitData.recruit_message, targetIds));
+                    await channel
+                    .TagUsers(ru.Select(u => u.Id),
+                        mentions => $"[通知] 當前報名人數為 {ru.Count()} 已達出團標準! {mentions} 請準備上車!");
+                    break;
                 }
-
-                await Task.Delay(TimeSpan.FromMinutes(1));
             }
-        });
+            else
+            {
+                break;
+            }
+            await Task.Delay(TimeSpan.FromSeconds(30));
+        }
+        await base.MessageEventListener(message);
     }
 
-    public override async Task StopAsync()
-    {
-        if (_cancellationTokenSource != null)
-        {
-            await _cancellationTokenSource.CancelAsync();
-        }
-    }
 }

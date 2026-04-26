@@ -3,6 +3,7 @@ using Dapper;
 using Discord;
 using Discord.WebSocket;
 using DiscordAssistant.Commands;
+using DiscordAssistant.DBModels;
 using DiscordAssistant.Workers;
 
 namespace DiscordAssistant;
@@ -15,6 +16,32 @@ internal sealed class Program
     private string? _connectionString;
     private Func<IDbConnection>? _connectionBuilder;
 
+    IEnumerable<IWorker> LoadWorkers()
+    {
+        using var conn = Global.GetConnection();
+        if (conn == null)
+            return [];
+        var dbSchedules = conn.Query<Schedule>("select * from schedule");
+        var scGroups = dbSchedules.GroupBy(s => s.worker_type ?? "Unknown").Select(s => new
+        {
+            type = s.Key,
+            schedules = s.ToArray()
+        });
+        List<IWorker> workers = [];
+        foreach (var group in scGroups)
+        {
+            if (group.type == "Unknown")
+            {
+                workers.AddRange(group.schedules.Select(s => new ScheduleWorker(_client, s.id)).Select(s => (IWorker)s));
+            }
+            else if (group.type == "Brileth")
+            {
+                workers.AddRange(group.schedules.Select(s => new BrileithRecruitWorker(_client, s.id, 5)).Select(s => (IWorker)s));
+            }
+        }
+        return workers;
+    }
+
     private Program()
     {
         var config = new DiscordSocketConfig
@@ -24,12 +51,14 @@ internal sealed class Program
 
         _client = new DiscordSocketClient(config);
         List<ICommand> commands = new();
-        var basicCommands = BasicCommands.All;
+        var basicCommands = Utilities.GetCommands(typeof(BasicCommands));
+        var brileithCommands = Utilities.GetCommands(typeof(BrileithCommands));
+        var notifyCommands = Utilities.GetCommands(typeof(NotifyCommands));
         commands.AddRange(basicCommands);
-        var brileithCommands = BrileithCommands.All;
         commands.AddRange(brileithCommands);
+        commands.AddRange(notifyCommands);
         Console.WriteLine("Register commands: " + string.Join(',', commands.Select(c => c.Name)));
-        
+
         commandRegistry = new CommandRegistry(commands);
         Global.SetConnectionString(Environment.GetEnvironmentVariable("CONNECTION_STRING"));
 
@@ -60,8 +89,10 @@ internal sealed class Program
     {
         await _client.LoginAsync(TokenType.Bot, token);
         await _client.StartAsync();
-        var w = new BrileithRecruitWorker(_client, 1);
-        w.Start();
+        // var w = new BrileithRecruitWorker(_client, 1);
+        // w.Start();
+        var test = new ScheduleWorker(_client, 2);
+        test.Start();
         briLeithNotifier?.Start();
         await Task.Delay(Timeout.Infinite);
     }
@@ -110,7 +141,7 @@ internal sealed class Program
 
 internal static class DotEnv
 {
-    public static void Load(string path = ".env")
+    public static void Load(string path = "D:\\podman\\localshared\\DiscordAssistant\\.env")
     {
         if (!File.Exists(path))
         {
