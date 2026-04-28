@@ -494,9 +494,183 @@ public class Utilities
 
     public static string CronFormatToReadable(string cronFormat)
     {
-        // [impl] convert cronformat string to format like: 
-        // ~HH:mm (Sun, Mon, Fri)
-        // HH:mm (Sun, Mon, Fri)
-        // HH:mm (Sun, Mon, Fri) ~
+        if (string.IsNullOrWhiteSpace(cronFormat))
+        {
+            return string.Empty;
+        }
+
+        var cronParts = cronFormat
+            .Split('|', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Select(ParseReadableCronPart)
+            .ToList();
+
+        if (cronParts.Count == 0 || cronParts.Any(part => part == null))
+        {
+            return cronFormat;
+        }
+
+        var readableCronParts = cronParts
+            .OfType<ReadableCronPart>()
+            .ToList();
+
+        var displayInfo = SelectReadableDisplayInfo(readableCronParts);
+
+        return string.Join(
+            ' ',
+            new[]
+            {
+                displayInfo.HasBefore ? "~" : null,
+                $"{displayInfo.DisplayPart.Hour:00}:{displayInfo.DisplayPart.Minute:00}",
+                $"({FormatCronWeekDays(displayInfo.DisplayPart.WeekDayField)})",
+                displayInfo.HasAfter ? "~" : null,
+            }.Where(part => !string.IsNullOrEmpty(part)));
+    }
+
+    private sealed record ReadableCronPart(int Minute, int Hour, string WeekDayField);
+
+    private static ReadableCronPart? ParseReadableCronPart(string cronExpression)
+    {
+        var parts = cronExpression.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        if (parts.Length != 5)
+        {
+            return null;
+        }
+
+        if (!int.TryParse(parts[0], out var minute) || minute is < 0 or > 59)
+        {
+            return null;
+        }
+
+        if (!int.TryParse(parts[1], out var hour) || hour is < 0 or > 23)
+        {
+            return null;
+        }
+
+        if (parts[2] != "*" || parts[3] != "*")
+        {
+            return null;
+        }
+
+        return new ReadableCronPart(minute, hour, parts[4]);
+    }
+
+    private static (ReadableCronPart DisplayPart, bool HasBefore, bool HasAfter) SelectReadableDisplayInfo(IReadOnlyList<ReadableCronPart> cronParts)
+    {
+        if (cronParts.Count == 1)
+        {
+            return (cronParts[0], false, false);
+        }
+
+        var dates = cronParts
+            .Select(part => ExpandReadableCronPartDates(part).FirstOrDefault())
+            .ToList();
+
+        if (dates.Any(date => date == default))
+        {
+            return (cronParts[0], false, false);
+        }
+
+        for (var index = 1; index < dates.Count; index++)
+        {
+            while (dates[index] < dates[index - 1])
+            {
+                dates[index] = dates[index].AddDays(7);
+            }
+        }
+
+        if (dates.Count == 2)
+        {
+            var minuteDiff = (int)(dates[1] - dates[0]).TotalMinutes;
+            if (minuteDiff == 1)
+            {
+                return (FromDate(dates[1]), true, false);
+            }
+
+            if (minuteDiff == 2)
+            {
+                return (FromDate(dates[0].AddMinutes(1)), true, true);
+            }
+        }
+
+        if (dates.Count == 3
+            && (int)(dates[1] - dates[0]).TotalMinutes == 1
+            && (int)(dates[2] - dates[1]).TotalMinutes == 1)
+        {
+            return (FromDate(dates[1]), true, true);
+        }
+
+        return (cronParts[0], false, false);
+    }
+
+    private static ReadableCronPart FromDate(DateTime date)
+    {
+        return new ReadableCronPart(date.Minute, date.Hour, ((int)date.DayOfWeek).ToString());
+    }
+
+    private static IEnumerable<DateTime> ExpandReadableCronPartDates(ReadableCronPart part)
+    {
+        var weekDays = ExpandReadableWeekDays(part.WeekDayField).DefaultIfEmpty(0);
+        foreach (var weekDay in weekDays)
+        {
+            yield return new DateTime(2024, 1, 7, part.Hour, part.Minute, 0, DateTimeKind.Unspecified)
+                .AddDays(weekDay);
+        }
+    }
+
+    private static IEnumerable<int> ExpandReadableWeekDays(string weekDayField)
+    {
+        if (weekDayField == "*")
+        {
+            return Enumerable.Range(0, 7);
+        }
+
+        var days = new List<int>();
+        foreach (var token in weekDayField.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            if (WeekDayLookup.TryGetValue(token, out var day))
+            {
+                days.Add(day);
+                continue;
+            }
+
+            if (token.Contains('-', StringComparison.Ordinal))
+            {
+                var rangeParts = token.Split('-', 2, StringSplitOptions.TrimEntries);
+                if (rangeParts.Length == 2
+                    && WeekDayLookup.TryGetValue(rangeParts[0], out var start)
+                    && WeekDayLookup.TryGetValue(rangeParts[1], out var end))
+                {
+                    if (start <= end)
+                    {
+                        days.AddRange(Enumerable.Range(start, end - start + 1));
+                    }
+                    else
+                    {
+                        days.AddRange(Enumerable.Range(start, 7 - start));
+                        days.AddRange(Enumerable.Range(0, end + 1));
+                    }
+                }
+            }
+        }
+
+        return days.Distinct();
+    }
+
+    private static string FormatCronWeekDays(string weekDayField)
+    {
+        var dayNames = new[] { "Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat" };
+
+        if (weekDayField == "*")
+        {
+            return string.Join(", ", dayNames);
+        }
+
+        var days = ExpandReadableWeekDays(weekDayField).ToList();
+        if (days.Count == 0)
+        {
+            return weekDayField;
+        }
+
+        return string.Join(", ", days.Select(day => dayNames[day]));
     }
 }

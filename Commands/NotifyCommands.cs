@@ -9,7 +9,10 @@ namespace DiscordAssistant.Commands;
 public static class NotifyCommands
 {
     public static async Task notifier_set(SocketSlashCommand command,
-        string name, int hour, int minute, string message,
+        string name,
+        [CommandParameter(true, "時間(小時)")] int hour,
+        [CommandParameter(true, "時間(分鐘)")] int minute,
+        [CommandParameter(true, "顯示訊息")] string message,
         [CommandParameter(false, "0到6 分別代表週日到周六，逗號(',')分隔或是留空表示全部")] string? weekDays,
         [CommandParameter(false)] string? workType)
     {
@@ -125,7 +128,7 @@ public static class NotifyCommands
             stringBuilder.AppendLine("id, name, cron_expression, message_template, worker_type");
             foreach (var notifier in allNotifier)
             {
-                stringBuilder.AppendLine($"{notifier.id}, {notifier.name}, {notifier.cron_expression}, {notifier.message_template}, {notifier.worker_type}");
+                stringBuilder.AppendLine($"{notifier.id}, {notifier.name}, {Utilities.CronFormatToReadable(notifier.cron_expression)}, {notifier.message_template}, {notifier.worker_type}");
             }
             await command.RespondAsync(stringBuilder.ToString());
         }
