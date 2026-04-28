@@ -26,31 +26,41 @@ public class CommandBase : ICommand
     {
         return BuildSlashCommandFromFunction(HandlerMethod);
     }
-
+    static object? CreateDefaultValue_<T>() { return default; }
+    static object? CreateDefaultValue(Type type)=>typeof(CommandBase).GetMethod(nameof(CreateDefaultValue_), BindingFlags.Static|BindingFlags.NonPublic)!.MakeGenericMethod(type).Invoke(null,[]);
     public Task ExecuteAsync(SocketSlashCommand command)
     {
         var parameters = HandlerMethod.GetParameters();
-        var args = new object[parameters.Length];
+        var args = new object?[parameters.Length];
         for (int i = 0; i < parameters.Length; i++)
         {
-            if (parameters[i].ParameterType == typeof(SocketSlashCommand))
+            var parameterType = parameters[i].ParameterType;
+            if (parameterType == typeof(SocketSlashCommand))
             {
                 args[i] = command;
             }
             else
             {
-                var option = command.Data.Options.FirstOrDefault(o => o.Name == parameters[i].Name!.ToLower());
-                if (option == null)
+                var option = command.Data.Options.FirstOrDefault(o => o.Name.Equals(parameters[i].Name, StringComparison.CurrentCultureIgnoreCase));
+                var attr = parameters[i].GetCustomAttribute<CommandParameterAttribute>();
+                bool isRequired = attr?.IsRequire ?? true;
+                if (option == null && isRequired)
                 {
-                    throw new ArgumentException($"Missing required option {parameters[i].Name} for command {Name}.");
+                    if (isRequired)
+                        throw new ArgumentException($"Missing required option {parameters[i].Name} for command {Name}.");
+                    args[i] = CreateDefaultValue(parameterType);
+                    continue;
                 }
-                if (option.Value == null)
+                if (option?.Value == null)
                 {
-                    throw new ArgumentException($"Option {parameters[i].Name} for command {Name} cannot be null.");
+                    if (isRequired)
+                        throw new ArgumentException($"Option {parameters[i].Name} for command {Name} cannot be null.");
+                    args[i] = CreateDefaultValue(parameterType);
+                    continue;
                 }
-                if (option.Value.GetType() != parameters[i].ParameterType)
+                if (option.Value.GetType() != parameterType)
                 {
-                    args[i] = Convert.ChangeType(option.Value, parameters[i].ParameterType);
+                    args[i] = Convert.ChangeType(option.Value, parameterType);
                 }
                 else
                 {
@@ -99,7 +109,7 @@ public class CommandBase : ICommand
                 .WithDescription(paramAttribute?.Description ?? $"The {param.Name} parameter.")
                 .WithRequired(paramAttribute?.IsRequire ?? Nullable.GetUnderlyingType(param.ParameterType) == null);
 
-            if (param.ParameterType == typeof(int))
+            if (param.ParameterType == typeof(int) || param.ParameterType == typeof(long))
             {
                 optionBuilder.WithType(ApplicationCommandOptionType.Integer);
             }

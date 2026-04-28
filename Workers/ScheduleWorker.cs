@@ -5,12 +5,12 @@ using DiscordAssistant.DBModels;
 
 namespace DiscordAssistant.Workers;
 
-public class ScheduleWorker
+public class ScheduleWorker : IWorker
 {
     protected CancellationTokenSource? _cancellationTokenSource { get; set; }
     protected DiscordSocketClient _client { get; set; }
     protected long _scheduleId { get; set; }
-
+    Task? _loop { get; set; }
     public ScheduleWorker(DiscordSocketClient client, long schedule_id)
     {
         _client = client;
@@ -25,20 +25,20 @@ public class ScheduleWorker
             string? cronRegex;
             string? messageTemplate;
             long? channelId;
-            using (var conn = Global.GetConnection())
+            using (var conn = Utilities.GetConnection())
             {
                 if (conn == null)
-                {
                     break;
-                }
-                Schedule? sc = conn?.QueryFirstOrDefault<Schedule>("select * from schedule where id = @_id", new
+                Schedule? sc = conn?.QueryFirstOrDefault<Schedule>("select * from schedule where id = @_scheduleId", new
                 {
-                    _id = (long)_scheduleId
+                    _scheduleId
                 });
-                name = sc?.name;
-                channelId = sc?.channel_id;
-                cronRegex = sc?.cron_expression;
-                messageTemplate = sc?.message_template;
+                if (sc == null)
+                    break;
+                name = sc.name;
+                channelId = sc.channel_id;
+                cronRegex = sc.cron_expression;
+                messageTemplate = sc.message_template;
             }
 
             if (channelId == null)
@@ -52,14 +52,14 @@ public class ScheduleWorker
                 var channel = await _client.GetChannelAsync((ulong)channelId);
                 if (channel is IMessageChannel messageChannel)
                 {
-                    var sentMessage = await messageChannel.SendMessageAsync(Utilities.CreateMessageText($"[{name}] {messageTemplate}", []));   
-                    await MessageEventListener(sentMessage);                 
+                    var sentMessage = await messageChannel.SendMessageAsync(Utilities.CreateMessageText($"[{name}] {messageTemplate}", []));
+                    await MessageEventListener(sentMessage);
                 }
                 else
                 {
                     break;
                 }
-                if (now.Second < 30)
+                if (now.Second <= 30)
                 {
                     await Task.Delay(TimeSpan.FromSeconds(60));
                 }
@@ -74,7 +74,7 @@ public class ScheduleWorker
     }
 
     public virtual async Task MessageEventListener(IUserMessage message)
-    {        
+    {
     }
 
     public void Start()
@@ -101,5 +101,12 @@ public class ScheduleWorker
         {
             await _cancellationTokenSource.CancelAsync();
         }
+    }
+
+    public bool IsFinished()
+    {
+        if (_cancellationTokenSource == null || _loop == null)
+            return true;
+        return _loop.Status != TaskStatus.Running;
     }
 }

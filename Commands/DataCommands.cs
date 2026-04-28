@@ -12,7 +12,7 @@ public static class DataCommands
         long? _channelId = (long?)command.ChannelId;
         long? _userId = (long?)command.User.Id;
         IEnumerable<DataStorage> storages;
-        using (var conn = Global.GetConnection())
+        using (var conn = Utilities.GetConnection())
         {
             if (conn == null)
             {
@@ -48,14 +48,14 @@ public static class DataCommands
 
     public static async Task set(SocketSlashCommand command, string name, string data, int isPrivate, string scope)
     {
-        var connection = Global.GetConnection();
+        var connection = Utilities.GetConnection();
         if (connection == null)
         {
             await command.ResponseDbConnectionFailureAsync();
             return;
         }
 
-        using (var conn = Global.GetConnection())
+        using (var conn = Utilities.GetConnection())
         {
             if (conn == null)
             {

@@ -7,4 +7,5 @@ public interface IWorker
     Task MessageEventListener(IUserMessage message);
     void Start();
     Task StopAsync();
+    bool IsFinished();
 }

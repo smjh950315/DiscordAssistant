@@ -1,4 +1,6 @@
+using System.Data;
 using System.Reflection;
+using Dapper;
 using Discord;
 using Discord.WebSocket;
 
@@ -460,5 +462,41 @@ public class Utilities
     public static IEnumerable<ICommand> GetCommands<T>()
     {
         return GetCommands(typeof(T));
+    }
+
+    static string? _connectionString;
+    
+    public static void SetConnectionString(string? connstr)
+    {
+        _connectionString = connstr;
+        if (!string.IsNullOrEmpty(_connectionString))
+        {
+            using (var conn = GetConnection())
+            {
+                conn?.Execute(Utilities.GetDatabaseInitializeSql());
+            }
+        }
+    }
+
+    public static IDbConnection? GetConnection()
+    {
+        if (string.IsNullOrEmpty(_connectionString))
+            return null;
+        try
+        {
+            return new Npgsql.NpgsqlConnection(_connectionString);
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    public static string CronFormatToReadable(string cronFormat)
+    {
+        // [impl] convert cronformat string to format like: 
+        // ~HH:mm (Sun, Mon, Fri)
+        // HH:mm (Sun, Mon, Fri)
+        // HH:mm (Sun, Mon, Fri) ~
     }
 }
