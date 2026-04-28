@@ -3,6 +3,7 @@ using System.Reflection;
 using System.Text;
 using Dapper;
 using Discord.WebSocket;
+using DiscordAssistant.Attributes;
 using DiscordAssistant.DBModels;
 
 namespace DiscordAssistant.Commands;
@@ -14,7 +15,9 @@ public static class BasicCommands
         await command.RespondAsync("Pong!");
     }
 
-    public static async Task roll(SocketSlashCommand command, int sides)
+    [CommandDescription("擲骰子")]
+    public static async Task roll(SocketSlashCommand command, 
+        [CommandParameter(true, "最大值")] int sides)
     {
         var random = new Random();
         var result = random.Next(1, sides + 1);

@@ -8,6 +8,7 @@ namespace DiscordAssistant.Commands;
 
 public static class NotifyCommands
 {
+    [CommandDescription("設定通知排程")]
     public static async Task notifier_set(SocketSlashCommand command,
         string name,
         [CommandParameter(true, "時間(小時)")] int hour,
@@ -62,7 +63,8 @@ public static class NotifyCommands
             }
         }
     }
-
+    
+    [CommandDescription("移除現有的通知排程 (請先用 /notifier_get_list 取得要刪除的通知排程id)")]
     public static async Task notifier_del(SocketSlashCommand command, long id)
     {
         if (id == 0)
@@ -104,6 +106,7 @@ public static class NotifyCommands
         }
     }
 
+    [CommandDescription("取得現有的通知排程清單")]
     public static async Task notifier_get_list(SocketSlashCommand command)
     {
         var channelId = command.ChannelId;

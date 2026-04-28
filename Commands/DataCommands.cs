@@ -1,11 +1,13 @@
 using Dapper;
 using Discord.WebSocket;
+using DiscordAssistant.Attributes;
 using DiscordAssistant.DBModels;
 
 namespace DiscordAssistant.Commands;
 
 public static class DataCommands
 {
+    [CommandDescription("設定查詢字典 (邏輯部分尚待完善)")]
     public static async Task get(SocketSlashCommand command, string name)
     {
         long? _guildId = (long?)command.GuildId;
@@ -46,6 +48,7 @@ public static class DataCommands
         await command.RespondAsync(st.data);
     }
 
+    [CommandDescription("查詢字典 (邏輯部分尚待完善)")]
     public static async Task set(SocketSlashCommand command, string name, string data, int isPrivate, string scope)
     {
         var connection = Utilities.GetConnection();

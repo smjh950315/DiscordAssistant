@@ -21,7 +21,7 @@ public static class BrileithCommands
         }
     }
 
-    [CommandDescription("設定招募時間與訊息")]
+    [CommandDescription("設定布里萊赫招募時間與訊息")]
     public static async Task brileith_set(SocketSlashCommand command,
         [CommandParameter(true, "時間(小時)")] int hour,
         [CommandParameter(true, "時間(分鐘)")] int minute,
