@@ -17,32 +17,6 @@ internal sealed class Program
     private string? _connectionString;
     private Func<IDbConnection>? _connectionBuilder;
 
-    IEnumerable<IWorker> LoadWorkers()
-    {
-        using var conn = Utilities.GetConnection();
-        if (conn == null)
-            return [];
-        var dbSchedules = conn.Query<Schedule>("select * from schedule");
-        var scGroups = dbSchedules.GroupBy(s => s.worker_type ?? "Unknown").Select(s => new
-        {
-            type = s.Key,
-            schedules = s.ToArray()
-        });
-        List<IWorker> workers = [];
-        foreach (var group in scGroups)
-        {
-            if (group.type == "Unknown")
-            {
-                workers.AddRange(group.schedules.Select(s => new ScheduleWorker(_client, s.id)).Select(s => (IWorker)s));
-            }
-            else if (group.type == "Brileth")
-            {
-                workers.AddRange(group.schedules.Select(s => new BrileithRecruitWorker(_client, s.id, 1)).Select(s => (IWorker)s));
-            }
-        }
-        return workers;
-    }
-
     private Program()
     {
         var config = new DiscordSocketConfig
@@ -132,7 +106,7 @@ internal sealed class Program
                         IWorker worker;
                         if (work.worker_type?.Contains("brileith", StringComparison.OrdinalIgnoreCase) ?? false)
                         {
-                            worker = new BrileithRecruitWorker(_client, work.id, 1);
+                            worker = new BrileithRecruitWorker(_client, work.id, 4);
                             workers.TryAdd(work.id, worker);
                         }
                         else
@@ -199,11 +173,17 @@ internal sealed class Program
 
 internal static class DotEnv
 {
-    public static void Load(string path = "D:\\podman\\localshared\\DiscordAssistant\\.env")
+    public static void Load(string path =
+#if DEBUG
+        "D:\\podman\\localshared\\DiscordAssistant\\.env"
+#else
+        ".env"
+#endif
+        )
     {
         if (!File.Exists(path))
         {
-            return;
+            throw new InvalidOperationException(".env file is not found");
         }
 
         foreach (var rawLine in File.ReadAllLines(path))
