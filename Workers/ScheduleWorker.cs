@@ -9,7 +9,8 @@ public class ScheduleWorker : IWorker
 {
     protected CancellationTokenSource? _cancellationTokenSource { get; set; }
     protected DiscordSocketClient _client { get; set; }
-    protected long _scheduleId { get; set; }
+    long _scheduleId { get; set; }
+    bool _terminated { get; set; }
     Task? _loop { get; set; }
     public ScheduleWorker(DiscordSocketClient client, long schedule_id)
     {
@@ -73,8 +74,9 @@ public class ScheduleWorker : IWorker
         }
     }
 
-    public virtual async Task MessageEventListener(IUserMessage message)
+    public virtual Task MessageEventListener(IUserMessage message)
     {
+        return Task.CompletedTask;
     }
 
     public void Start()
@@ -89,8 +91,10 @@ public class ScheduleWorker : IWorker
             {
                 await this.TaskLoop(cancelationToken);
             }
-            catch
+            catch (Exception ex)
             {
+                Console.WriteLine(ex.ToString());
+                _terminated = true;
             }
         });
     }
@@ -108,5 +112,10 @@ public class ScheduleWorker : IWorker
         if (_cancellationTokenSource == null || _loop == null)
             return true;
         return _loop.Status != TaskStatus.Running;
+    }
+
+    public bool IsTerminated()
+    {
+        return _terminated;
     }
 }

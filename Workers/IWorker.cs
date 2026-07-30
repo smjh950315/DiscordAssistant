@@ -8,4 +8,5 @@ public interface IWorker
     void Start();
     Task StopAsync();
     bool IsFinished();
+    bool IsTerminated();
 }

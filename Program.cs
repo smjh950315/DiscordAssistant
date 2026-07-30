@@ -13,9 +13,6 @@ internal sealed class Program
 {
     private readonly DiscordSocketClient _client;
     private readonly CommandRegistry commandRegistry;
-    private BriLeithNotifier? briLeithNotifier;
-    private string? _connectionString;
-    private Func<IDbConnection>? _connectionBuilder;
 
     private Program()
     {
@@ -37,11 +34,6 @@ internal sealed class Program
         commandRegistry = new CommandRegistry(commands);
         Utilities.SetConnectionString(Environment.GetEnvironmentVariable("CONNECTION_STRING"));
 
-        var g27ChannelIdText = Environment.GetEnvironmentVariable("DISCORD_CHANNEL_ID");
-        if (ulong.TryParse(g27ChannelIdText, out var g27ChannelId))
-        {
-            briLeithNotifier = new BriLeithNotifier(_client, g27ChannelId, 21, 00, 5);
-        }
         _client.Log += LogAsync;
         _client.Ready += ReadyAsync;
         _client.SlashCommandExecuted += SlashCommandExecutedAsync;
@@ -64,8 +56,6 @@ internal sealed class Program
     {
         await _client.LoginAsync(TokenType.Bot, token);
         await _client.StartAsync();
-        // var w = new BrileithRecruitWorker(_client, 1);
-        // w.Start();
 
         CancellationTokenSource cancellationTokenSource = new();
         var workerListener = Task.Run(async () =>
@@ -78,24 +68,38 @@ internal sealed class Program
                 using var conn = Utilities.GetConnection();
                 if (conn != null)
                 {
-                    var workIdList = conn.Query<long>("select id from schedule");
-                    var shouldStartWorkIdList = workIdList.Where(i => !workers.Keys.Contains(i)).ToArray();
-                    var shouldStartWorks = conn.Query<Schedule>("select * from schedule where id = ANY(@_ids)", new
+                    IEnumerable<long> workIdList;
+                    long[] shouldStartWorkIdList;
+                    IEnumerable<Schedule> shouldStartWorks;
+                    try
                     {
-                        _ids = shouldStartWorkIdList
-                    });
+                        workIdList = conn.Query<long>("select id from schedule");
+                        shouldStartWorkIdList = workIdList.Where(i => !workers.Keys.Contains(i)).ToArray();
+                        shouldStartWorks = conn.Query<Schedule>("select * from schedule where id = ANY(@_ids)", new
+                        {
+                            _ids = shouldStartWorkIdList
+                        });
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"[{DateTime.Now:yyyy-MM-dd}] Exception at Query schedules: ");
+                        Console.WriteLine(ex.ToString());
+                        workIdList = [];
+                        shouldStartWorkIdList = [];
+                        shouldStartWorks = [];
+                    }
 
-                    if (remover == null || remover.IsCompleted)
+                    if ((remover == null || remover.IsCompleted) && !workers.IsEmpty)
                     {
                         // get id not exists in db
-                        var toStopWorkers = workers.Where(kvp => !workIdList.Contains(kvp.Key));
+                        var toStopWorkers = workers.Where(kvp => !workIdList.Contains(kvp.Key) || kvp.Value.IsTerminated());
                         if (toStopWorkers.Count() != 0)
                             remover = Task.Run(async () =>
                             {
                                 foreach (var work in toStopWorkers)
                                 {
-                                    await work.Value.StopAsync();
-                                    Console.WriteLine($"[{DateTime.Now}] Stop task of schedule(id={work.Key})");
+                                    try { await work.Value.StopAsync(); } catch { }
+                                    Console.WriteLine($"[{DateTime.Now:yyyy-MM-dd}] Stop task of schedule(id={work.Key})");
                                     workers.Remove(work.Key, out _);
                                 }
                             });
@@ -103,28 +107,33 @@ internal sealed class Program
 
                     foreach (var work in shouldStartWorks)
                     {
-                        IWorker worker;
-                        if (work.worker_type?.Contains("brileith", StringComparison.OrdinalIgnoreCase) ?? false)
+                        try
                         {
-                            worker = new BrileithRecruitWorker(_client, work.id, 4);
-                            workers.TryAdd(work.id, worker);
+                            IWorker worker;
+                            if (work.worker_type?.Contains("brileith", StringComparison.OrdinalIgnoreCase) ?? false)
+                            {
+                                worker = new BrileithRecruitWorker(_client, work.id, 4);
+                                workers.TryAdd(work.id, worker);
+                            }
+                            else
+                            {
+                                worker = new ScheduleWorker(_client, work.id);
+                                workers.TryAdd(work.id, worker);
+                            }
+                            Console.WriteLine($"[{DateTime.Now:yyyy-MM-dd}] Start a task of schedule(id={work.id})");
+                            worker.Start();
                         }
-                        else
+                        catch (Exception ex)
                         {
-                            worker = new ScheduleWorker(_client, work.id);
-                            workers.TryAdd(work.id, worker);
+                            Console.WriteLine($"[{DateTime.Now:yyyy-MM-dd}] Exception at Starting worker (id={work.id})");
+                            Console.WriteLine(ex.ToString());
                         }
-                        Console.WriteLine($"[{DateTime.Now}] Start a task of schedule(id={work.id})");
-                        worker.Start();
                     }
                 }
                 await Task.Delay(TimeSpan.FromMinutes(1));
             }
         });
 
-        // var test = new ScheduleWorker(_client, 2);
-        // test.Start();
-        // briLeithNotifier?.Start();
         await Task.Delay(Timeout.Infinite);
         await cancellationTokenSource.CancelAsync();
     }
