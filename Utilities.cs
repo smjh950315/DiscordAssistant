@@ -50,6 +50,12 @@ public class Utilities
                 recruit_time_regex VARCHAR(32) NOT NULL
             );
 
+            CREATE TABLE IF NOT EXISTS auto_post_queue (
+                id BIGSERIAL PRIMARY KEY,
+                channel_id BIGINT NULL,
+                url VARCHAR(1024) NULL
+            );
+
             CREATE INDEX IF NOT EXISTS idx_schedule_subscriber_schedule_id
                 ON schedule_subscriber(schedule_id);
 

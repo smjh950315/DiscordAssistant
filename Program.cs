@@ -58,6 +58,68 @@ internal sealed class Program
         await _client.StartAsync();
 
         CancellationTokenSource cancellationTokenSource = new();
+        var postQueueListener = Task.Run(async () => 
+        {
+            var token = cancellationTokenSource.Token;
+            while(!token.IsCancellationRequested)
+            {
+                using var conn = Utilities.GetConnection();
+                if (conn != null)
+                {
+                    try
+                    {
+                        var postList = await conn.QueryAsync<AutoPostQueue>("""
+                            select * from auto_post_queue as a
+                            where 
+                            a.channel_id is not null 
+                            and a.url is not null 
+                            and length(a.url) > 6
+                            limit 5;
+                            """);
+                        // sql already ensure channel_id and url must have value
+                        if (postList.Any())
+                        {
+                            var channelPosts = postList
+                            .Where(p => p.channel_id.HasValue)
+                            .GroupBy(p => p.channel_id!.Value)
+                            .Select(p => new
+                            {
+                                channel_id = p.Key,
+                                records = p.Select(_p => new { _p.id, url = _p.url! })
+                            });
+                            List<long> sentList = [];
+                            foreach(var channelPost in channelPosts)
+                            {
+                                var channel = await _client.GetChannelAsync((ulong)channelPost.channel_id);
+                                if (channel is IMessageChannel messageChannel)
+                                {
+                                    foreach (var record in channelPost.records)
+                                    {
+                                        await messageChannel.SendMessageAsync(record.url);
+                                        sentList.Add(record.id);
+                                        await Task.Delay(TimeSpan.FromMinutes(1 / postList.Count()));
+                                    }
+                                }
+                            }
+                            await conn.ExecuteAsync("""
+                                delete 
+                                from auto_post_queue
+                                where id = ANY(@_ids)
+                                """, new
+                            {
+                                _ids = sentList.ToArray()
+                            });
+                        }
+                    }
+                    catch(Exception ex)
+                    {
+                        Console.WriteLine($"[{DateTime.Now:yyyy-MM-dd}] Exception at sending queue posts");
+                        Console.WriteLine(ex.ToString());
+                    }
+                }
+                await Task.Delay(TimeSpan.FromMinutes(1));
+            }
+        });
         var workerListener = Task.Run(async () =>
         {
             var token = cancellationTokenSource.Token;
@@ -73,9 +135,9 @@ internal sealed class Program
                     IEnumerable<Schedule> shouldStartWorks;
                     try
                     {
-                        workIdList = conn.Query<long>("select id from schedule");
+                        workIdList = await conn.QueryAsync<long>("select id from schedule");
                         shouldStartWorkIdList = workIdList.Where(i => !workers.Keys.Contains(i)).ToArray();
-                        shouldStartWorks = conn.Query<Schedule>("select * from schedule where id = ANY(@_ids)", new
+                        shouldStartWorks = await conn.QueryAsync<Schedule>("select * from schedule where id = ANY(@_ids)", new
                         {
                             _ids = shouldStartWorkIdList
                         });
