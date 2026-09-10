@@ -74,6 +74,7 @@ internal sealed class Program
                             a.channel_id is not null 
                             and a.url is not null 
                             and length(a.url) > 6
+                            and is_uploaded = false
                             limit 5;
                             """);
                         // sql already ensure channel_id and url must have value
@@ -97,13 +98,13 @@ internal sealed class Program
                                     {
                                         await messageChannel.SendMessageAsync(record.url);
                                         sentList.Add(record.id);
-                                        await Task.Delay(TimeSpan.FromMinutes(1 / postList.Count()));
+                                        await Task.Delay(TimeSpan.FromSeconds(30));
                                     }
                                 }
                             }
                             await conn.ExecuteAsync("""
-                                delete 
-                                from auto_post_queue
+                                update auto_post_queue
+                                set is_uploaded = true
                                 where id = ANY(@_ids)
                                 """, new
                             {

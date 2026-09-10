@@ -67,6 +67,14 @@ public class Utilities
             """;
     }
 
+    public static IEnumerable<string> GetMigrationSqlList()
+    {
+        yield return """
+            ALTER TABLE auto_post_queue 
+            ADD COLUMN IF NOT EXISTS is_uploaded bool DEFAULT false NOT NULL;
+            """;
+    }
+
     public static string BuildRecruitTimeRegex(string weekDay, string timeOfDay)
     {
         if (string.IsNullOrWhiteSpace(weekDay) || string.IsNullOrWhiteSpace(timeOfDay))
@@ -480,6 +488,16 @@ public class Utilities
             using (var conn = GetConnection())
             {
                 conn?.Execute(Utilities.GetDatabaseInitializeSql());
+                foreach (var migration in GetMigrationSqlList())
+                {
+                    try
+                    {
+                        conn?.Execute(migration);
+                    }
+                    catch
+                    {
+                    }
+                }
             }
         }
     }
