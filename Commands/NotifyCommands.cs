@@ -130,10 +130,10 @@ public static class NotifyCommands
                 _channelId
             });
             StringBuilder stringBuilder = new ();
-            stringBuilder.AppendLine("id, name, cron_expression, message_template, worker_type");
+            stringBuilder.AppendLine("id, name, cron_expression, message_template, worker_type, timeout");
             foreach (var notifier in allNotifier)
             {
-                stringBuilder.AppendLine($"{notifier.id}, {notifier.name}, {Utilities.CronFormatToReadable(notifier.cron_expression)}, {notifier.message_template}, {notifier.worker_type}");
+                stringBuilder.AppendLine($"{notifier.id}, {notifier.name}, {Utilities.CronFormatToReadable(notifier.cron_expression)}, {notifier.message_template}, {notifier.worker_type}, {(notifier.timteout.HasValue ? notifier.timteout : "Never")}");
             }
             await command.RespondAsync(stringBuilder.ToString());
         }
