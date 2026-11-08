@@ -72,6 +72,8 @@ public class Utilities
         yield return """
             ALTER TABLE auto_post_queue 
             ADD COLUMN IF NOT EXISTS is_uploaded bool DEFAULT false NOT NULL;
+            ALTER TABLE schedule 
+            ADD COLUMN IF NOT EXISTS timteout INT NULL;
             """;
     }
 

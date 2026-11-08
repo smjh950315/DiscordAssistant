@@ -15,6 +15,7 @@ public static class NotifyCommands
         [CommandParameter(true, "時間(分鐘)")] int minute,
         [CommandParameter(true, "顯示訊息")] string message,
         [CommandParameter(false, "0到6 分別代表週日到周六，逗號(',')分隔或是留空表示全部")] string? weekDays,
+        [CommandParameter(false, "最長招募時間(秒)")] int? timeout,
         [CommandParameter(false)] string? workType)
     {
         if (string.IsNullOrEmpty(name) || string.IsNullOrWhiteSpace(name))
@@ -46,13 +47,14 @@ public static class NotifyCommands
                     await command.ResponseFailure("時間輸入格式錯誤");
                     return;
                 }
-                conn.Execute("""insert into schedule(name, channel_id, cron_expression, message_template, worker_type) values(@_name, @_channelId, @_cronExpr, @_msgExpr, @_workType)""", new
+                conn.Execute("""insert into schedule(name, channel_id, cron_expression, message_template, worker_type, timeout) values(@_name, @_channelId, @_cronExpr, @_msgExpr, @_workType, @_timeout)""", new
                 {
                     _name = name,
                     _channelId,
                     _cronExpr,
                     _msgExpr = message,
-                    _workType = workType
+                    _workType = workType,
+                    _timeout = timeout
                 });
                 await command.RespondAsync("設定成功");
             }

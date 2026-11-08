@@ -13,14 +13,24 @@ public class BrileithRecruitWorker : ScheduleWorker, IWorker
         _minParticipant = minParticipant;
     }
 
-    public override async Task MessageEventListener(IUserMessage message)
+    public override async Task MessageEventListener(IUserMessage message, int? timeout)
     {
         if (_cancellationTokenSource == null)
         {
-            await base.MessageEventListener(message);
+            await base.MessageEventListener(message, timeout);
             return;
         }
-        while (!_cancellationTokenSource.IsCancellationRequested)
+        Func<DateTime, bool> timeArrived;
+        if (timeout != null)
+        {
+            DateTime endTime = DateTime.Now.AddSeconds(timeout.Value);
+            timeArrived = (now) => { return endTime >= now; };
+        }
+        else
+        {
+            timeArrived = (now) => { return false; };
+        }
+        while (!_cancellationTokenSource.IsCancellationRequested && !timeArrived(DateTime.Now))
         {
             if (await _client.FreshMessageAsync(message) is IUserMessage userMessage)
             {
@@ -42,7 +52,7 @@ public class BrileithRecruitWorker : ScheduleWorker, IWorker
             }
             await Task.Delay(TimeSpan.FromSeconds(30));
         }
-        await base.MessageEventListener(message);
+        await base.MessageEventListener(message, timeout);
     }
 
 }

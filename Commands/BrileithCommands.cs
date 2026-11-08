@@ -26,8 +26,9 @@ public static class BrileithCommands
         [CommandParameter(true, "時間(小時)")] int hour,
         [CommandParameter(true, "時間(分鐘)")] int minute,
         [CommandParameter(true, "顯示訊息")] string message,
-        [CommandParameter(false, "0到6 分別代表週日到周六，逗號(',')分隔或是留空表示全部")] string weekDays)
+        [CommandParameter(false, "0到6 分別代表週日到周六，逗號(',')分隔或是留空表示全部")] string weekDays,
+        [CommandParameter(false, "最長招募時間(秒)")] int? timeout)
     {
-        await NotifyCommands.notifier_set(command, "brileith", hour, minute, message, weekDays, "brileith");
+        await NotifyCommands.notifier_set(command, "brileith", hour, minute, message, weekDays, timeout, "brileith");
     }
 }

@@ -22,4 +22,6 @@ public class Schedule
 
     [MaxLength(32)]
     public string? worker_type { get; set; }
+
+    public int? timteout { get; set; }
 }

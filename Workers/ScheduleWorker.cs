@@ -26,6 +26,7 @@ public class ScheduleWorker : IWorker
             string? cronRegex;
             string? messageTemplate;
             long? channelId;
+            int? msgResponseTimeout;
             using (var conn = Utilities.GetConnection())
             {
                 if (conn == null)
@@ -40,6 +41,7 @@ public class ScheduleWorker : IWorker
                 channelId = sc.channel_id;
                 cronRegex = sc.cron_expression;
                 messageTemplate = sc.message_template;
+                msgResponseTimeout = sc.timteout;
             }
 
             if (channelId == null)
@@ -54,7 +56,7 @@ public class ScheduleWorker : IWorker
                 if (channel is IMessageChannel messageChannel)
                 {
                     var sentMessage = await messageChannel.SendMessageAsync(Utilities.CreateMessageText($"[{name}] {messageTemplate}", []));
-                    await MessageEventListener(sentMessage);
+                    await MessageEventListener(sentMessage, msgResponseTimeout);
                 }
                 else
                 {
@@ -74,7 +76,7 @@ public class ScheduleWorker : IWorker
         }
     }
 
-    public virtual Task MessageEventListener(IUserMessage message)
+    public virtual Task MessageEventListener(IUserMessage message, int? timeout)
     {
         return Task.CompletedTask;
     }
